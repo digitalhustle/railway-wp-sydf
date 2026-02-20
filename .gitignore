@@ -1,0 +1,30 @@
+# ============================================================
+# .gitignore for Railway WordPress Deployment
+# ============================================================
+
+# Environment files — NEVER commit real secrets
+.env
+.env.local
+.env.production
+
+# WordPress uploads — these are stored on Railway's
+# persistent volume, not in the repository
+wp-content/uploads/
+
+# WordPress cache directories
+wp-content/cache/
+wp-content/upgrade/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Node modules (if any build tools are used)
+node_modules/
+
+# Log files
+*.log

@@ -2,31 +2,31 @@
 # Dockerfile for shareyourdreamfriday.com on Railway
 # Based on the official WordPress image (Apache).
 #
-# FIXES APPLIED (v2):
-#   1. Removed manual GD extension install — the official
-#      wordpress:latest image already includes GD. Reinstalling
-#      it caused the "gd is already loaded!" warning and added
-#      ~2 minutes of unnecessary build time.
+# FIXES APPLIED (v3 - FINAL):
+#   Removed ALL Apache MPM switching code entirely.
 #
-#   2. Fixed Apache MPM conflict ("More than one MPM loaded").
-#      The official wordpress image ships with mpm_prefork
-#      already enabled. Simply running `a2enmod mpm_event`
-#      without first disabling ALL mpm modules caused Apache
-#      to load two MPM modules simultaneously, which is fatal.
-#      The fix is to explicitly disable mpm_prefork AND
-#      mpm_worker before enabling mpm_event.
+#   Root cause analysis: The official wordpress:latest image is
+#   built on php:8.3-apache, which ships with mpm_prefork enabled
+#   via TWO symlinks in /etc/apache2/mods-enabled/:
+#     - mpm_prefork.load
+#     - mpm_prefork.conf
+#   Our a2dismod command removed the .load symlink at build time,
+#   but the .conf symlink remained. At runtime, Apache found both
+#   mpm_prefork.conf (from the residual symlink) and mpm_event.load
+#   (which we added), causing the fatal "More than one MPM loaded"
+#   error. The a2enmod/a2dismod approach is unreliable across
+#   different base image versions.
+#
+#   The correct fix is to NOT switch MPMs at all. The default
+#   mpm_prefork is perfectly suitable for a WordPress blog and is
+#   what the official Railway WordPress templates use.
 # ============================================================
 
 FROM wordpress:latest
 
-# --- Fix Apache MPM conflict ---
-# Disable ALL MPM modules first, then enable only mpm_event.
-# This prevents the "More than one MPM loaded" fatal error.
-RUN a2dismod mpm_prefork mpm_worker mpm_event 2>/dev/null || true && \
-    a2enmod mpm_event && \
-    a2enmod rewrite && \
-    a2enmod headers && \
-    a2enmod expires
+# Enable Apache modules needed for WordPress (rewrite, headers, expires).
+# These are safe to enable and do not conflict with any MPM.
+RUN a2enmod rewrite headers expires 2>/dev/null || true
 
 # Copy custom PHP configuration for better performance & security
 COPY wordpress-config/php.ini /usr/local/etc/php/conf.d/wordpress-custom.ini
@@ -36,10 +36,8 @@ COPY wordpress-config/apache.conf /etc/apache2/conf-available/wordpress-custom.c
 RUN a2enconf wordpress-custom
 
 # Ensure the uploads directory exists with correct permissions.
-# The persistent volume will be mounted here at runtime.
 RUN mkdir -p /var/www/html/wp-content/uploads && \
     chown -R www-data:www-data /var/www/html/wp-content/uploads && \
     chmod 755 /var/www/html/wp-content/uploads
 
-# Expose port 80 (Railway handles SSL termination externally)
 EXPOSE 80
